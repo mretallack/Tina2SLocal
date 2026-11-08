@@ -1,0 +1,247 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>Slice</title>
+<style>
+  :root {
+    --bg: #f2f3f5;
+    --card: #ffffff;
+    --fg: #14161a;
+    --muted: #5b6470;
+    --border: #dfe3e8;
+    --input-bg: #ffffff;
+    --input-fg: #14161a;
+    --accent: #2f6fb3;
+    --accent-fg: #ffffff;
+    --go: #2e8b57;
+    --go-fg: #ffffff;
+    --sec: #6b7480;
+    --sec-fg: #ffffff;
+    --track: #e2e6ea;
+    --bar: #2e8b57;
+    --shadow: 0 1px 3px rgba(0,0,0,.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101214;
+      --card: #1b1e22;
+      --fg: #e8eaed;
+      --muted: #9aa2ad;
+      --border: #2c3138;
+      --input-bg: #23272d;
+      --input-fg: #e8eaed;
+      --accent: #4a90d9;
+      --accent-fg: #0b0d0f;
+      --go: #3aa76d;
+      --go-fg: #0b0d0f;
+      --sec: #3a4048;
+      --sec-fg: #e8eaed;
+      --track: #2c3138;
+      --bar: #3aa76d;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; }
+  body {
+    font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--fg);
+    padding: 12px 12px 20px;
+  }
+  h2 { margin: 0 0 10px; font-size: 15px; font-weight: 600; color: var(--muted);
+       text-transform: uppercase; letter-spacing: .04em; }
+  h2 .file { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--fg); }
+  .row { display: flex; gap: 8px; margin: 8px 0; }
+  button {
+    flex: 1; padding: 13px 10px; font-size: 15px; font-weight: 600;
+    border: 0; border-radius: 10px; background: var(--accent); color: var(--accent-fg);
+    transition: opacity .15s;
+  }
+  button:active { opacity: .8; }
+  button:disabled { opacity: .45; }
+  button.sec { background: var(--sec); color: var(--sec-fg); }
+  button.go { background: var(--go); color: var(--go-fg); }
+  .card {
+    background: var(--card); border-radius: 12px; padding: 6px 14px 14px;
+    margin: 8px 0; box-shadow: var(--shadow);
+  }
+  label {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    padding: 9px 0; font-size: 14.5px; border-bottom: 1px solid var(--border);
+  }
+  label:last-of-type { border-bottom: 0; }
+  input[type=number] {
+    width: 96px; padding: 8px 10px; font-size: 15px; text-align: right;
+    background: var(--input-bg); color: var(--input-fg);
+    border: 1px solid var(--border); border-radius: 8px;
+  }
+  #bar { height: 10px; background: var(--track); border-radius: 6px; overflow: hidden; margin-top: 14px; }
+  #bar > i { display: block; height: 100%; width: 0; background: var(--bar); transition: width .2s; }
+  #status { font-size: 13.5px; color: var(--muted); margin-top: 10px; min-height: 18px; }
+  #log {
+    display: none; font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace;
+    white-space: pre-wrap; word-break: break-word;
+    background: var(--bg); color: var(--muted);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px; margin-top: 12px; max-height: 120px; overflow: auto;
+  }
+</style>
+</head>
+<body>
+  <h2>Slice <span class="file" id="file"></span></h2>
+
+  <div class="row">
+    <button id="pick" class="sec">Choose STL</button>
+    <button id="slice">Slice</button>
+  </div>
+
+  <div class="card">
+    <label>Layer height (mm) <input id="lh" type="number" step="0.05" min="0.05" value="0.2"></label>
+    <label>Infill (%) <input id="inf" type="number" step="5" min="0" max="100" value="15"></label>
+    <label>Wall shells <input id="sh" type="number" step="1" min="1" value="3"></label>
+    <label>Nozzle &deg;C <input id="nt" type="number" step="5" value="200"></label>
+    <label>Bed &deg;C <input id="bt" type="number" step="5" value="0"></label>
+    <div id="bar"><i></i></div>
+    <div id="status">No model loaded.</div>
+  </div>
+
+  <div class="row">
+    <button id="send" class="go" disabled>Send G-code to printer</button>
+  </div>
+
+  <pre id="log"></pre>
+
+<script type="module">
+import { Engine } from './lib/kiri/run/engine.js';
+
+const $ = id => document.getElementById(id);
+const setStatus = t => { $('status').textContent = t; };
+const bar = $('bar').firstElementChild;
+let gcode = null;
+let modelName = null;
+
+function tina2Device(temp, bedTemp) {
+  return {
+    mode: "FDM", deviceName: "Tina2S",
+    bedWidth: 100, bedDepth: 100, bedHeight: 100, maxHeight: 100, originCenter: false,
+    extruders: [{ extFilament: 1.75, extNozzle: 0.4, extOffsetX: 0, extOffsetY: 0 }],
+    gcodePre: ["M104 S{temp}", "G28 Z", "G28 X Y", "G1 X50 Y50 F1000", "G29", "M107",
+               "G90", "M82", "M109 S{temp}", "G92 E0",
+               "G1 X90 Y6 Z0.27 F2000", "G1 X20 Y6 Z0.27 E15 F1000", "G92 E0"],
+    gcodePost: ["M104 S0", "M107", "G92 E0", "G0 E-1 F300", "G28 Z F300", "G28 X0 Y0"],
+    gcodeFan: ["M106 S{fan_speed}"],
+    gcodeLayer: ["M117 Layer {layer}/{layers}"],
+    gcodeFExt: "gcode", fwRetract: false
+  };
+}
+function tina2Process(temp, bedTemp) {
+  return {
+    processName: "Tina2S PLA",
+    sliceHeight: parseFloat($('lh').value) || 0.2,
+    sliceShells: parseInt($('sh').value) || 3,
+    sliceFillSparse: (parseInt($('inf').value) || 15) / 100,
+    sliceFillType: "grid",
+    sliceTopLayers: 3, sliceBottomLayers: 3,
+    firstLayerNozzleTemp: temp, outputTemp: temp, outputBedTemp: bedTemp,
+    outputFeedrate: 40, outputSeekrate: 80,
+    outputRetractDist: 1.5, outputRetractSpeed: 40, firstLayerRate: 25,
+    sliceSupportEnable: false
+  };
+}
+
+async function stlAvailable() {
+  try {
+    const r = await fetch('./stl', { method: 'HEAD' });
+    return r.ok;
+  } catch (e) { return false; }
+}
+
+window.onStlReady = async function (name) {
+  modelName = name;
+  $('file').textContent = "— " + name;
+  $('slice').disabled = false;
+  setStatus("Model loaded: " + name + ". Tap Slice.");
+};
+
+$('pick').onclick = () => { if (window.T2) T2.chooseStl(); };
+
+$('slice').onclick = async () => {
+  gcode = null;
+  $('send').disabled = true;
+  $('slice').disabled = true;
+  $('log').style.display = "none";
+  try {
+    setStatus("Loading model…");
+    const resp = await fetch('./stl');
+    if (!resp.ok) { setStatus("No STL file. Tap Choose STL."); $('slice').disabled = false; return; }
+    const buf = await resp.arrayBuffer();
+    const temp = parseInt($('nt').value) || 200;
+    const bed = parseInt($('bt').value) || 0;
+
+    let last = 0;
+    const eng = await new Engine()
+      .setRender(false)
+      .setListener(e => {
+        if (e.slice) {
+          const u = e.slice.update;
+          if (u - last > 0.01 || u >= 1) {
+            last = u;
+            bar.style.width = Math.round(u * 100) + "%";
+            setStatus("Slicing " + Math.round(u * 100) + "%" + (e.slice.updateStatus ? " — " + e.slice.updateStatus : ""));
+          }
+        }
+      })
+      .setMode("FDM").setController({})
+      .setDevice(tina2Device(temp, bed))
+      .setProcess(tina2Process(temp, bed))
+      .parse(buf);
+
+    setStatus("Slicing…");
+    await eng.slice();
+    setStatus("Preparing toolpaths…");
+    await eng.prepare();
+    setStatus("Generating G-code…");
+    gcode = await eng.export();
+
+    const lines = gcode.split("\n").length;
+    let meta = "";
+    for (const l of gcode.split("\n")) {
+      if (l.indexOf("filament used") >= 0 || l.indexOf("print time") >= 0) meta += l + "\n";
+    }
+    $('log').style.display = "block";
+    $('log').textContent = meta.trim();
+    bar.style.width = "100%";
+    setStatus("Done — " + lines + " lines (" + Math.round(gcode.length / 1024) + " KB).");
+    $('send').disabled = false;
+  } catch (err) {
+    setStatus("ERROR: " + (err && err.message ? err.message : err));
+  } finally {
+    $('slice').disabled = false;
+  }
+};
+
+$('send').onclick = async () => {
+  if (!gcode) return;
+  $('send').disabled = true;
+  setStatus("Sending to printer…");
+  try {
+    const r = await fetch('./gcode', { method: 'POST', body: gcode });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    setStatus("Sent. Uploading to printer and starting…");
+  } catch (e) {
+    setStatus("Send failed: " + e.message);
+    $('send').disabled = false;
+  }
+};
+
+(async () => {
+  if (await stlAvailable()) {
+    setStatus("Model ready. Tap Slice.");
+    $('slice').disabled = false;
+  }
+})();
+</script>
+</body>
+</html>
