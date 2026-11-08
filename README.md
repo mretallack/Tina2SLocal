@@ -43,6 +43,30 @@ The slicer is configured with a **Tina2S** device profile (100 × 100 × 100 mm 
 0.4 mm nozzle, 1.75 mm filament) and a PLA process. Kiri:Moto also ships a built-in
 `Tina2.Basic.json` device profile, which this profile is based on.
 
+### Building the slicer from source
+
+Every Kiri:Moto asset shipped in the APK is **compiled from source** — nothing is
+copied from a prebuilt download. The upstream source is vendored as a git submodule
+at `thirdparty/grid-apps` (pinned to a specific commit) and `tools/build-slicer.sh`
+rebuilds the runtime assets:
+
+```bash
+git submodule update --init --recursive   # fetch the vendored slicer source
+./tools/build-slicer.sh                    # rebuild assets/lib/kiri + assets/wasm
+```
+
+The script:
+
+1. `npm install` the slicer's dependencies, then pins `manifold-3d@3.3.2` (the
+   version the engine was built against) so `manifold.wasm` is reproducible.
+2. Generates the derived JS bundles (`three`, `jszip`, `quickjs`, `planegcs`).
+3. Bundles `engine.js` and `worker.js` with esbuild (`bin/esbuild.config.mjs prod`).
+4. Compiles the WASM geometry modules with Emscripten (`emcc` for `kiri-sla.c`,
+   `em++` for the C++ `kiri-geo.cpp`).
+
+Requirements: `node`/`npm` and the [Emscripten SDK](https://emscripten.org)
+(`emcc`/`em++`) on `PATH`.
+
 ## Requirements
 
 - Android 5.0+ (`minSdk 21`).
@@ -92,16 +116,25 @@ src/com/retallack/tina2print/
 assets/
     slice.html                 slicer UI (Kiri:Moto engine glue)
     sample-cube.stl            test model
-    lib/kiri/run/              Kiri:Moto engine.js, worker.js, manifold.wasm
-    wasm/                      Kiri:Moto kiri-geo.wasm, kiri-sla.wasm
+    lib/kiri/run/              Kiri:Moto engine.js, worker.js, manifold.wasm  [generated]
+    wasm/                      Kiri:Moto kiri-geo.wasm, kiri-sla.wasm          [generated]
+tools/build-slicer.sh          rebuilds the slicer assets from vendored source
+thirdparty/grid-apps/          Kiri:Moto source (git submodule, pinned commit)
 docs/LAN-PROTOCOL.md           recovered Tina2S local Wi-Fi protocol
 ```
 
+Files marked `[generated]` are produced by `tools/build-slicer.sh`; they are
+committed for convenience but are rebuilt from `thirdparty/grid-apps` by the script.
+
 ## Third-party components
 
-- **Kiri:Moto** (`assets/lib`, `assets/wasm`, and the slicing logic in
-  `assets/slice.html`) — © GridSpace, **MIT License**.
-  <https://github.com/GridSpace/grid-apps>
+- **Kiri:Moto** — © GridSpace, **MIT License**.
+  <https://github.com/GridSpace/grid-apps>. The source is vendored at
+  `thirdparty/grid-apps`; the shipped `assets/lib/kiri` and `assets/wasm` binaries
+  are built from it by `tools/build-slicer.sh`, and the slicing logic lives in
+  `assets/slice.html`.
+- **manifold-3d** (bundled as `manifold.wasm`) — © Emmett Lalish, **Apache-2.0**.
+  <https://github.com/elalish/manifold>
 
 ## License
 
