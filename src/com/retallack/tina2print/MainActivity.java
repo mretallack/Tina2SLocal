@@ -24,6 +24,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
@@ -576,27 +577,62 @@ public class MainActivity extends Activity {
         String out = "Upload HTTP " + code + ": " + body + "  (" + total + " bytes)";
         if (code >= 400) throw new Exception(out);
 
-        // The printer stores the file on SD under an 8.3 name but accepts the original
-        // name on the select endpoint. Select it (and start, if requested).
-        String stored = body;
-        try {
-            JSONObject j = new JSONObject(body);
-            JSONObject local = j.optJSONObject("files");
-            if (local != null) {
-                JSONObject l = local.optJSONObject("local");
-                if (l != null && l.optString("name").length() > 0) stored = l.optString("name");
-            }
-        } catch (Exception ignored) {}
+        // The printer stores the file on SD under an 8.3 name (e.g. slice.gcode ->
+        // SLICE~1.GCO) and the select endpoint ONLY honours that 8.3 name — selecting
+        // by the original long name returns HTTP 204 but silently does nothing. Work
+        // out the real stored name before selecting.
+        String stored = resolveStoredName(name, total);
+        log("  stored on SD as: " + stored);
 
-        // The firmware needs a moment to flush the upload to SD, so the select can
+        // The firmware also needs a moment to flush the upload to SD, so the select can
         // transiently fail; retry a few times until the job is actually running.
         String sel = "";
-        for (int attempt = 1; attempt <= 6; attempt++) {
+        for (int attempt = 1; attempt <= 8; attempt++) {
             sel = selectFile(stored, print);
             if (!print || sel.contains("started")) break;
             try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
         }
         return out + "\n  " + sel;
+    }
+
+    /**
+     * Finds the 8.3 name the printer stored the just-uploaded file under. Lists the
+     * printer's files and matches by byte size (the file list has no timestamps); if
+     * the listing is not ready yet, falls back to the firmware's naming scheme
+     * (6-char base + "~1" + 3-char extension, upper-cased).
+     */
+    private String resolveStoredName(String longName, long size) {
+        String b = base();
+        for (int i = 0; i < 10; i++) {
+            try {
+                JSONArray arr = new JSONObject(get(b + "/api/files/local")).optJSONArray("files");
+                if (arr != null) {
+                    for (int k = 0; k < arr.length(); k++) {
+                        JSONObject f = arr.optJSONObject(k);
+                        if (f != null && f.optLong("size") == size) {
+                            String n = f.optString("name");
+                            if (n.length() > 0) return n;
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+            try { Thread.sleep(700); } catch (InterruptedException ignored) {}
+        }
+        return shortName(longName);
+    }
+
+    /** The firmware's 8.3 conversion: 6-char base + "~1" + 3-char extension, upper-cased. */
+    private static String shortName(String name) {
+        int dot = name.lastIndexOf('.');
+        String base = dot >= 0 ? name.substring(0, dot) : name;
+        String ext = dot >= 0 ? name.substring(dot + 1) : "";
+        base = base.replaceAll("[^A-Za-z0-9]", "");
+        ext = ext.replaceAll("[^A-Za-z0-9]", "");
+        if (base.length() > 6) base = base.substring(0, 6);
+        if (ext.length() > 3) ext = ext.substring(0, 3);
+        base = base.toUpperCase();
+        ext = ext.toUpperCase();
+        return ext.isEmpty() ? base + "~1" : base + "~1." + ext;
     }
 
     /** POST /api/files/sdcard/<name> {"command":"select","print":bool}. Returns a log line. */
