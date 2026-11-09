@@ -127,7 +127,10 @@ function tina2Device(temp, bedTemp) {
     mode: "FDM", deviceName: "Tina2S",
     bedWidth: 100, bedDepth: 100, bedHeight: 100, maxHeight: 100, originCenter: false,
     extruders: [{ extFilament: 1.75, extNozzle: 0.4, extOffsetX: 0, extOffsetY: 0 }],
-    gcodePre: ["M140 S{bed_temp}", "M104 S{temp}",
+    // Preheat to 150 C (not full temp) before homing/levelling, as Cura's Tina2
+    // start block does: stops the nozzle oozing during G29 and the heat soak.
+    // {temp} is only claimed at the M109 after levelling.
+    gcodePre: ["M140 S{bed_temp}", "M104 S150",
                "M190 S{bed_temp}",                       // wait for hot bed (level hot)
                "G28 Z", "G28 X Y", "G1 X50 Y50 F1000", "G29",
                "M107", "G90", "M82",
