@@ -127,8 +127,13 @@ function tina2Device(temp, bedTemp) {
     mode: "FDM", deviceName: "Tina2S",
     bedWidth: 100, bedDepth: 100, bedHeight: 100, maxHeight: 100, originCenter: false,
     extruders: [{ extFilament: 1.75, extNozzle: 0.4, extOffsetX: 0, extOffsetY: 0 }],
-    gcodePre: ["M140 S{bed_temp}", "M104 S{temp}", "G28 Z", "G28 X Y", "G1 X50 Y50 F1000",
-               "G29", "M107", "G90", "M82", "M190 S{bed_temp}", "M109 S{temp}", "G92 E0",
+    gcodePre: ["M140 S{bed_temp}", "M104 S{temp}",
+               "M190 S{bed_temp}",                       // wait for hot bed (level hot)
+               "G28 Z", "G28 X Y", "G1 X50 Y50 F1000", "G29",
+               "M107", "G90", "M82",
+               "M109 S{temp}",                           // wait for nozzle
+               "G4 S30",                                 // heat-soak the melt zone
+               "G92 E0",
                "G1 X90 Y6 Z0.27 F2000", "G1 X20 Y6 Z0.27 E15 F1000", "G92 E0"],
     gcodePost: ["M104 S0", "M140 S0", "M107", "G92 E0", "G0 E-1 F300",
                 "G28 Z", "G28 X0 Y0", "M84"],
