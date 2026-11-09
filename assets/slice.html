@@ -130,7 +130,8 @@ function tina2Device(temp, bedTemp) {
     gcodePre: ["M140 S{bed_temp}", "M104 S{temp}", "G28 Z", "G28 X Y", "G1 X50 Y50 F1000",
                "G29", "M107", "G90", "M82", "M190 S{bed_temp}", "M109 S{temp}", "G92 E0",
                "G1 X90 Y6 Z0.27 F2000", "G1 X20 Y6 Z0.27 E15 F1000", "G92 E0"],
-    gcodePost: ["M104 S0", "M107", "G92 E0", "G0 E-1 F300", "G28 Z F300", "G28 X0 Y0"],
+    gcodePost: ["M104 S0", "M140 S0", "M107", "G92 E0", "G0 E-1 F300",
+                "G28 Z", "G28 X0 Y0", "M84"],
     gcodeFan: ["M106 S{fan_speed}"],
     gcodeLayer: ["M117 Layer {layer}/{layers}"],
     gcodeFExt: "gcode", fwRetract: false
