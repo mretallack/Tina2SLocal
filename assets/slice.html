@@ -135,8 +135,11 @@ function tina2Device(temp, bedTemp) {
                "G4 S30",                                 // heat-soak the melt zone
                "G92 E0",
                "G1 X90 Y6 Z0.27 F2000", "G1 X20 Y6 Z0.27 E15 F1000", "G92 E0"],
+    // Note: the Tina2S firmware does not run G28 at end of print, so park the head
+    // with plain moves instead of homing.
     gcodePost: ["M104 S0", "M140 S0", "M107", "G92 E0", "G0 E-1 F300",
-                "G28 Z", "G28 X0 Y0", "M84"],
+                "G91", "G1 Z10 F600", "G90",
+                "G1 X0 Y0 F3000", "M84"],
     gcodeFan: ["M106 S{fan_speed}"],
     gcodeLayer: ["M117 Layer {layer}/{layers}"],
     gcodeFExt: "gcode", fwRetract: false

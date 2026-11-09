@@ -592,55 +592,7 @@ public class MainActivity extends Activity {
             if (!print || sel.contains("started")) break;
             try { Thread.sleep(1500); } catch (InterruptedException ignored) {}
         }
-        if (print && sel.contains("started")) armPostPrintHome(base());
         return out + "\n  " + sel;
-    }
-
-    /**
-     * The Tina2S firmware does not run the G-code after the final extruding move (it
-     * resets at end of print), so the head is left wherever it stopped. Watch the job
-     * in the background and home the head once the print finishes.
-     */
-    private void armPostPrintHome(final String b) {
-        new Thread(() -> {
-            boolean started = false;
-            for (int i = 0; i < 30 && !started; i++) {
-                started = isPrinting(b);
-                try { Thread.sleep(2000); } catch (InterruptedException e) { return; }
-            }
-            if (!started) { log("Post-print home: print never started; not armed."); return; }
-            log("Post-print home armed — the head will be homed when the print finishes.");
-            for (int i = 0; i < 10800; i++) {           // up to ~6 hours
-                if (!isPrinting(b)) {
-                    try { Thread.sleep(6000); } catch (InterruptedException e) { return; }
-                    try {
-                        post(b + "/api/printer/command", "{\"command\":\"G28 X0 Y0\"}");
-                        log("Print finished — homed the head (G28 X0 Y0).");
-                    } catch (Exception e) {
-                        log("Post-print home failed: " + e);
-                    }
-                    return;
-                }
-                try { Thread.sleep(2000); } catch (InterruptedException e) { return; }
-            }
-            log("Post-print home: gave up waiting.");
-        }).start();
-    }
-
-    /** POST a JSON body to a URL. */
-    private void post(String url, String json) throws Exception {
-        HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
-        c.setConnectTimeout(3000);
-        c.setReadTimeout(8000);
-        c.setRequestMethod("POST");
-        c.setDoOutput(true);
-        c.setRequestProperty("Content-Type", "application/json");
-        OutputStream os = c.getOutputStream();
-        os.write(json.getBytes("UTF-8"));
-        os.close();
-        int code = c.getResponseCode();
-        readAll(code < 400 ? c.getInputStream() : c.getErrorStream());
-        if (code >= 400) throw new Exception("HTTP " + code);
     }
 
     /**
