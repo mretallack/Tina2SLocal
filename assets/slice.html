@@ -101,7 +101,7 @@
     <label>Layer height (mm) <input id="lh" type="number" step="0.05" min="0.05" value="0.2"></label>
     <label>Infill (%) <input id="inf" type="number" step="5" min="0" max="100" value="15"></label>
     <label>Wall shells <input id="sh" type="number" step="1" min="1" value="3"></label>
-    <label>Nozzle &deg;C <input id="nt" type="number" step="5" value="200"></label>
+    <label>Nozzle &deg;C <input id="nt" type="number" step="5" value="210"></label>
     <label>Bed &deg;C <input id="bt" type="number" step="5" value="50"></label>
     <div id="bar"><i></i></div>
     <div id="status">No model loaded.</div>
@@ -148,7 +148,9 @@ function tina2Process(temp, bedTemp) {
     firstLayerNozzleTemp: temp, outputTemp: temp,
     outputBedTemp: bedTemp, firstLayerBedTemp: bedTemp,
     outputFeedrate: 40, outputSeekrate: 80,
-    outputRetractDist: 1.5, outputRetractSpeed: 40, firstLayerRate: 25,
+    // Kiri:Moto derives the raft's first (thickest) layer speed as
+    // firstLayerRate / 3, so a low value slows the raft + first layer a lot.
+    outputRetractDist: 1.5, outputRetractSpeed: 40, firstLayerRate: 15,
     outputRaft: true, outputRaftSpacing: 0.2,
     sliceSupportEnable: false
   };
