@@ -71,8 +71,25 @@ public class MainActivity extends Activity {
     private File slicedGcodeFile;
     private TextView sliceLabel;
 
+    // Status tab
+    private View printView, sliceView, statusView;
+    private Button printTab, sliceTab, statusTab;
+    private TextView stDevice, stState, stNozzle, stBed, stFile, stProgress, stElapsed, stLeft, stUpdated;
+    private int currentTab = 0;
+    private volatile boolean statusVisible = false;
+    private volatile boolean statusInFlight = false;
+
     private final ExecutorService exec = Executors.newSingleThreadExecutor();
     private final Handler ui = new Handler(Looper.getMainLooper());
+
+    /** Re-polls the printer every 2 s while the Status tab is on screen. */
+    private final Runnable statusPoll = new Runnable() {
+        @Override public void run() {
+            if (!statusVisible) return;
+            refreshStatus();
+            ui.postDelayed(this, 2000);
+        }
+    };
 
     private static final String PREFS = "tina2print";
 
@@ -84,32 +101,39 @@ public class MainActivity extends Activity {
         slicedGcodeFile = new File(getFilesDir(), "sliced.gcode");
 
         FrameLayout content = new FrameLayout(this);
-        View printView = buildPrintView();
-        View sliceView = buildSliceView();
+        printView = buildPrintView();
+        sliceView = buildSliceView();
+        statusView = buildStatusView();
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
 
         LinearLayout tabs = new LinearLayout(this);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
-        Button printTab = new Button(this);
+        printTab = new Button(this);
         printTab.setText("Print");
-        Button sliceTab = new Button(this);
+        sliceTab = new Button(this);
         sliceTab.setText("Slice");
+        statusTab = new Button(this);
+        statusTab.setText("Status");
         tabs.addView(printTab, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         tabs.addView(sliceTab, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        tabs.addView(statusTab, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         root.addView(tabs);
 
         sliceView.setVisibility(View.GONE);
+        statusView.setVisibility(View.GONE);
         content.addView(printView);
         content.addView(sliceView);
+        content.addView(statusView);
         root.addView(content, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         setContentView(root);
 
-        printTab.setOnClickListener(v -> showTab(true, printView, sliceView, printTab, sliceTab));
-        sliceTab.setOnClickListener(v -> showTab(false, printView, sliceView, printTab, sliceTab));
-        showTab(true, printView, sliceView, printTab, sliceTab);
+        printTab.setOnClickListener(v -> showTab(0));
+        sliceTab.setOnClickListener(v -> showTab(1));
+        statusTab.setOnClickListener(v -> showTab(2));
+        showTab(0);
 
         SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         ipField.setText(prefs.getString("ip", "10.0.0.96"));
@@ -137,12 +161,7 @@ public class MainActivity extends Activity {
         Button scanBtn = new Button(this);
         scanBtn.setText("Find printer");
         scanBtn.setOnClickListener(v -> scan());
-        Button statusBtn = new Button(this);
-        statusBtn.setText("Status");
-        statusBtn.setOnClickListener(v -> status());
         row1.addView(scanBtn, weight());
-        row1.addView(spacer());
-        row1.addView(statusBtn, weight());
         root.addView(row1);
 
         root.addView(section("G-code file"));
@@ -290,11 +309,31 @@ public class MainActivity extends Activity {
         return v;
     }
 
-    private void showTab(boolean print, View printView, View sliceView, Button printTab, Button sliceTab) {
-        printView.setVisibility(print ? View.VISIBLE : View.GONE);
-        sliceView.setVisibility(print ? View.GONE : View.VISIBLE);
-        printTab.setAlpha(print ? 1f : 0.5f);
-        sliceTab.setAlpha(print ? 0.5f : 1f);
+    private void showTab(int index) {
+        currentTab = index;
+        printView.setVisibility(index == 0 ? View.VISIBLE : View.GONE);
+        sliceView.setVisibility(index == 1 ? View.VISIBLE : View.GONE);
+        statusView.setVisibility(index == 2 ? View.VISIBLE : View.GONE);
+        printTab.setAlpha(index == 0 ? 1f : 0.5f);
+        sliceTab.setAlpha(index == 1 ? 1f : 0.5f);
+        statusTab.setAlpha(index == 2 ? 1f : 0.5f);
+
+        statusVisible = (index == 2);
+        ui.removeCallbacks(statusPoll);
+        if (statusVisible) ui.post(statusPoll);
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        statusVisible = false;
+        ui.removeCallbacks(statusPoll);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (currentTab == 2) showTab(2);   // resume polling
     }
 
     private LinearLayout.LayoutParams weight() {
@@ -373,42 +412,123 @@ public class MainActivity extends Activity {
 
     // ---------- Networking ----------
 
-    private void status() {
+    // ---------- Status tab ----------
+
+    private View buildStatusView() {
+        int pad = dp(16);
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(pad, dp(12), pad, pad);
+
+        root.addView(section("Printer"));
+        stDevice = field(root, "Device");
+        stState  = field(root, "State");
+        stNozzle = field(root, "Nozzle");
+        stBed    = field(root, "Bed");
+
+        root.addView(section("Job"));
+        stFile     = field(root, "File");
+        stProgress = field(root, "Progress");
+        stElapsed  = field(root, "Elapsed");
+        stLeft     = field(root, "Time left");
+
+        stUpdated = new TextView(this);
+        stUpdated.setTextSize(11);
+        stUpdated.setTextColor(0xFF9AA2AD);
+        stUpdated.setPadding(dp(2), dp(16), 0, 0);
+        root.addView(stUpdated);
+
+        View filler = new View(this);
+        root.addView(filler, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        return root;
+    }
+
+    /** One label/value row; returns the value TextView so it can be updated. */
+    private TextView field(LinearLayout parent, String label) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(dp(2), dp(7), dp(2), dp(7));
+
+        TextView l = new TextView(this);
+        l.setText(label);
+        l.setTextSize(13);
+        l.setTextColor(0xFF9AA2AD);
+        l.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.42f));
+
+        TextView val = new TextView(this);
+        val.setText("\u2014");
+        val.setTextSize(15);
+        val.setTypeface(android.graphics.Typeface.MONOSPACE);
+        val.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.58f));
+
+        row.addView(l);
+        row.addView(val);
+        parent.addView(row);
+        return val;
+    }
+
+    /** Kick off one poll of the printer; safe to call repeatedly. */
+    private void refreshStatus() {
+        if (statusInFlight) return;
+        statusInFlight = true;
         final String b = base();
         exec.execute(() -> {
             try {
-                log("GET " + b + "/api/version");
                 JSONObject v = new JSONObject(get(b + "/api/version"));
-                log("  device: " + v.optString("text") + "  fw " + v.optString("device_version")
-                        + "  module " + v.optString("server_hardware"));
-
-                log("GET " + b + "/api/printer");
                 JSONObject p = new JSONObject(get(b + "/api/printer"));
-                JSONObject st = p.optJSONObject("state");
-                String text = st != null ? st.optString("text") : "?";
-                JSONObject temp = p.optJSONObject("temperature");
-                String t = "";
-                if (temp != null) {
-                    JSONObject tool = temp.optJSONObject("tool0");
-                    JSONObject bed = temp.optJSONObject("bed");
-                    if (tool != null) t += "  nozzle " + tool.optInt("actual") + "/" + tool.optInt("target") + "\u00B0C";
-                    if (bed != null) t += "  bed " + bed.optInt("actual") + "/" + bed.optInt("target") + "\u00B0C";
-                }
-                log("  state: " + text + t);
-
                 JSONObject j = new JSONObject(get(b + "/api/job"));
-                JSONObject job = j.optJSONObject("job");
-                JSONObject prog = j.optJSONObject("progress");
-                if (job != null && prog != null) {
-                    JSONObject f = job.optJSONObject("file");
-                    String fn = f != null ? f.optString("name") : "?";
-                    log("  job: " + fn + "  " + prog.optDouble("completion") + "%"
-                            + "  left " + prog.optInt("printTimeLeft") + "s");
-                }
+                ui.post(() -> applyStatus(v, p, j));
             } catch (Exception e) {
-                log("ERROR: " + e);
+                ui.post(() -> {
+                    stState.setText("unreachable");
+                    stUpdated.setText("Last attempt " + clock() + " \u2014 " + e);
+                });
+            } finally {
+                statusInFlight = false;
             }
         });
+    }
+
+    private void applyStatus(JSONObject v, JSONObject p, JSONObject j) {
+        stDevice.setText(v.optString("text", "?") + "  fw " + v.optString("device_version", "?"));
+
+        JSONObject st = p.optJSONObject("state");
+        stState.setText(st != null ? st.optString("text", "?") : "?");
+
+        JSONObject temp = p.optJSONObject("temperature");
+        if (temp != null) {
+            JSONObject tool = temp.optJSONObject("tool0");
+            JSONObject bed = temp.optJSONObject("bed");
+            if (tool != null) stNozzle.setText(tool.optInt("actual") + " / " + tool.optInt("target") + " \u00B0C");
+            if (bed != null) stBed.setText(bed.optInt("actual") + " / " + bed.optInt("target") + " \u00B0C");
+        }
+
+        JSONObject job = j.optJSONObject("job");
+        if (job != null) {
+            JSONObject f = job.optJSONObject("file");
+            stFile.setText(f != null ? f.optString("name", "\u2014") : "\u2014");
+        }
+
+        JSONObject prog = j.optJSONObject("progress");
+        if (prog != null) {
+            stProgress.setText(String.format("%.1f %%", prog.optDouble("completion", 0)));
+            stElapsed.setText(hms(prog.optInt("printTime", 0)));
+            stLeft.setText(hms(prog.optInt("printTimeLeft", 0)));
+        }
+
+        stUpdated.setText("Updated " + clock());
+    }
+
+    private String clock() {
+        return new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(new java.util.Date());
+    }
+
+    private String hms(int sec) {
+        if (sec <= 0) return "\u2014";
+        int h = sec / 3600, m = (sec % 3600) / 60, s = sec % 60;
+        return h > 0 ? String.format("%d:%02d:%02d", h, m, s) : String.format("%d:%02d", m, s);
     }
 
     private void scan() {
