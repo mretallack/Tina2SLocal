@@ -102,7 +102,7 @@
     <label>Infill (%) <input id="inf" type="number" step="5" min="0" max="100" value="15"></label>
     <label>Wall shells <input id="sh" type="number" step="1" min="1" value="3"></label>
     <label>Nozzle &deg;C <input id="nt" type="number" step="5" value="200"></label>
-    <label>Bed &deg;C <input id="bt" type="number" step="5" value="0"></label>
+    <label>Bed &deg;C <input id="bt" type="number" step="5" value="50"></label>
     <div id="bar"><i></i></div>
     <div id="status">No model loaded.</div>
   </div>
@@ -127,8 +127,8 @@ function tina2Device(temp, bedTemp) {
     mode: "FDM", deviceName: "Tina2S",
     bedWidth: 100, bedDepth: 100, bedHeight: 100, maxHeight: 100, originCenter: false,
     extruders: [{ extFilament: 1.75, extNozzle: 0.4, extOffsetX: 0, extOffsetY: 0 }],
-    gcodePre: ["M104 S{temp}", "G28 Z", "G28 X Y", "G1 X50 Y50 F1000", "G29", "M107",
-               "G90", "M82", "M109 S{temp}", "G92 E0",
+    gcodePre: ["M140 S{bed_temp}", "M104 S{temp}", "G28 Z", "G28 X Y", "G1 X50 Y50 F1000",
+               "G29", "M107", "G90", "M82", "M190 S{bed_temp}", "M109 S{temp}", "G92 E0",
                "G1 X90 Y6 Z0.27 F2000", "G1 X20 Y6 Z0.27 E15 F1000", "G92 E0"],
     gcodePost: ["M104 S0", "M107", "G92 E0", "G0 E-1 F300", "G28 Z F300", "G28 X0 Y0"],
     gcodeFan: ["M106 S{fan_speed}"],
@@ -144,9 +144,11 @@ function tina2Process(temp, bedTemp) {
     sliceFillSparse: (parseInt($('inf').value) || 15) / 100,
     sliceFillType: "grid",
     sliceTopLayers: 3, sliceBottomLayers: 3,
-    firstLayerNozzleTemp: temp, outputTemp: temp, outputBedTemp: bedTemp,
+    firstLayerNozzleTemp: temp, outputTemp: temp,
+    outputBedTemp: bedTemp, firstLayerBedTemp: bedTemp,
     outputFeedrate: 40, outputSeekrate: 80,
     outputRetractDist: 1.5, outputRetractSpeed: 40, firstLayerRate: 25,
+    outputRaft: true, outputRaftSpacing: 0.2,
     sliceSupportEnable: false
   };
 }
