@@ -135,13 +135,18 @@ function tina2Device(temp, bedTemp) {
                "G4 S30",                                 // heat-soak the melt zone
                "G92 E0",
                "G1 X90 Y6 Z0.27 F2000", "G1 X20 Y6 Z0.27 E15 F1000", "G92 E0"],
-    // End-of-print park. The Tina2S firmware blocks G28 at print-end, so park with
-    // plain moves instead of homing. M203 Z15 raises the firmware's Z feedrate cap
-    // (as the community Tina2 Cura profile does) so the lift is always allowed.
-    gcodePost: ["M104 S0", "M140 S0", "M107", "G92 E0", "G0 E-1 F300",
+    // End-of-print park: verbatim the Cura/upstream-Kiri:Moto end block for the
+    // Tina2 (see thirdparty/grid-apps/src/kiri/dev/fdm/Tina2.Basic.json). Proven
+    // on this Tina2S: the head homes up and back, the bed runs forward so the
+    // print presents. M203 Z15 raises the firmware Z feedrate cap so the G28 Z
+    // lift is allowed. No M84 - motors stay energised to hold the park position.
+    gcodePost: [";(**** end.gcode for tina2****)",
                 "M203 Z15",
-                "G91", "G1 Z10 F600", "G90",
-                "G1 X0 Y0 F3000", "M84"],
+                "M104 S0", "M140 S0", "M107",
+                "G92 E0 (Reset after prime)", "G0 E-1 F300",
+                "G28 Z F300",
+                "G28 X0 Y0",
+                "G1 Y90 F1000"],
     gcodeFan: ["M106 S{fan_speed}"],
     gcodeLayer: ["M117 Layer {layer}/{layers}"],
     gcodeFExt: "gcode", fwRetract: false
