@@ -135,9 +135,11 @@ function tina2Device(temp, bedTemp) {
                "G4 S30",                                 // heat-soak the melt zone
                "G92 E0",
                "G1 X90 Y6 Z0.27 F2000", "G1 X20 Y6 Z0.27 E15 F1000", "G92 E0"],
-    // Note: the Tina2S firmware does not run G28 at end of print, so park the head
-    // with plain moves instead of homing.
+    // End-of-print park. The Tina2S firmware blocks G28 at print-end, so park with
+    // plain moves instead of homing. M203 Z15 raises the firmware's Z feedrate cap
+    // (as the community Tina2 Cura profile does) so the lift is always allowed.
     gcodePost: ["M104 S0", "M140 S0", "M107", "G92 E0", "G0 E-1 F300",
+                "M203 Z15",
                 "G91", "G1 Z10 F600", "G90",
                 "G1 X0 Y0 F3000", "M84"],
     gcodeFan: ["M106 S{fan_speed}"],
