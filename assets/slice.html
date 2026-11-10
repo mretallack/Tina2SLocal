@@ -111,6 +111,10 @@
     <button id="send" class="go" disabled>Send G-code to printer</button>
   </div>
 
+  <div class="row">
+    <button id="reset" class="sec" style="display:none">Reset slicer</button>
+  </div>
+
   <pre id="log"></pre>
 
 <script type="module">
@@ -121,6 +125,34 @@ const setStatus = t => { $('status').textContent = t; };
 const bar = $('bar').firstElementChild;
 let gcode = null;
 let modelName = null;
+
+// --- stall watchdog ---------------------------------------------------------
+// Kiri:Moto's engine can't be cancelled: eng.slice()/prepare()/export() return
+// promises that never settle if a worker hangs (e.g. the WASM boolean op in the
+// "layer deltas" stage choking on overlapping or invalid geometry). So watch for
+// the progress callback going quiet and report a failure instead of spinning
+// forever. "Reset" reloads the page, tearing down the hung worker pool.
+const STALL_MS = 60000;
+let watchdog = null, lastTick = 0, phase = "";
+const kick = () => { lastTick = Date.now(); };
+function disarmWatchdog() { if (watchdog) { clearInterval(watchdog); watchdog = null; } }
+function armWatchdog(p) {
+  phase = p; kick();
+  disarmWatchdog();
+  watchdog = setInterval(() => {
+    if (Date.now() - lastTick > STALL_MS) {
+      failSlice("slice stalled while " + phase +
+        " — the model may have overlapping or invalid geometry. Tap Reset and try another file.");
+    }
+  }, 1000);
+}
+function failSlice(msg) {
+  disarmWatchdog();
+  setStatus("ERROR: " + msg);
+  $('slice').disabled = false;
+  $('send').disabled = true;
+  $('reset').style.display = "";
+}
 
 function tina2Device(temp, bedTemp) {
   return {
@@ -194,6 +226,7 @@ $('slice').onclick = async () => {
   gcode = null;
   $('send').disabled = true;
   $('slice').disabled = true;
+  $('reset').style.display = "none";
   $('log').style.display = "none";
   try {
     setStatus("Loading model…");
@@ -207,6 +240,7 @@ $('slice').onclick = async () => {
     const eng = await new Engine()
       .setRender(false)
       .setListener(e => {
+        kick();
         if (e.slice) {
           const u = e.slice.update;
           if (u - last > 0.01 || u >= 1) {
@@ -222,11 +256,15 @@ $('slice').onclick = async () => {
       .parse(buf);
 
     setStatus("Slicing…");
+    armWatchdog("slicing");
     await eng.slice();
     setStatus("Preparing toolpaths…");
+    armWatchdog("preparing toolpaths");
     await eng.prepare();
     setStatus("Generating G-code…");
+    armWatchdog("generating G-code");
     gcode = await eng.export();
+    disarmWatchdog();
 
     // Cura's G-code files end with a terminator. The Tina2S firmware only
     // runs the end-of-file block when the file ends with a newline and this
@@ -246,10 +284,19 @@ $('slice').onclick = async () => {
     setStatus("Done — " + lines + " lines (" + Math.round(gcode.length / 1024) + " KB).");
     $('send').disabled = false;
   } catch (err) {
+    disarmWatchdog();
     setStatus("ERROR: " + (err && err.message ? err.message : err));
   } finally {
     $('slice').disabled = false;
   }
+};
+
+// Recovery from a hung slice: the native side rebuilds the slicer WebView,
+// which tears down the hung Kiri:Moto worker pool (the engine has no cancel).
+// Falls back to a page reload when opened outside the app.
+$('reset').onclick = () => {
+  if (window.T2 && T2.resetSlicer) T2.resetSlicer();
+  else location.reload();
 };
 
 $('send').onclick = async () => {

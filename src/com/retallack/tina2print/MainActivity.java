@@ -15,6 +15,7 @@ import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
@@ -67,6 +68,8 @@ public class MainActivity extends Activity {
     // Slice tab
     private WebView webView;
     private LocalServer server;
+    private LinearLayout sliceRoot;
+    private String stlName;
     private File stlFile;
     private File slicedGcodeFile;
     private TextView sliceLabel;
@@ -230,8 +233,15 @@ public class MainActivity extends Activity {
     // ---------- Slice tab ----------
 
     private View buildSliceView() {
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
+        sliceRoot = new LinearLayout(this);
+        sliceRoot.setOrientation(LinearLayout.VERTICAL);
+        populateSlicer(sliceRoot);
+        return sliceRoot;
+    }
+
+    /** Creates the slicer WebView and its loopback server inside the container. */
+    private void populateSlicer(LinearLayout root) {
+        root.removeAllViews();
 
         webView = new WebView(this);
         webView.setBackgroundColor(0xFF101214);
@@ -241,6 +251,14 @@ public class MainActivity extends Activity {
         ws.setAllowFileAccess(false);
         ws.setMediaPlaybackRequiresUserGesture(false);
         webView.addJavascriptInterface(new SliceBridge(), "T2");
+        // Re-announce the loaded STL once the (fresh) page has finished loading.
+        webView.setWebViewClient(new WebViewClient() {
+            @Override public void onPageFinished(WebView v, String url) {
+                if (stlName != null && stlFile.exists() && stlFile.length() > 0) {
+                    v.evaluateJavascript("window.onStlReady(" + JSONObject.quote(stlName) + ")", null);
+                }
+            }
+        });
         root.addView(webView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
@@ -253,8 +271,23 @@ public class MainActivity extends Activity {
             sliceLabel.setText("Slicer failed to start: " + e);
             root.addView(sliceLabel);
         }
+    }
 
-        return root;
+    /**
+     * Tears down and rebuilds the slicer WebView. Reloading the page drops the
+     * Kiri:Moto worker pool, which is the only way to clear a worker that hung
+     * mid-slice (the engine has no cancel API). A fresh WebView guarantees the
+     * old workers and their WASM heaps are released.
+     */
+    private void rebuildSlicer() {
+        if (server != null) { server.stop(); server = null; }
+        if (webView != null) {
+            webView.removeJavascriptInterface("T2");
+            webView.loadUrl("about:blank");
+            webView.destroy();
+            webView = null;
+        }
+        populateSlicer(sliceRoot);
     }
 
     /** JS -> native bridge for the slicer page. */
@@ -267,6 +300,11 @@ public class MainActivity extends Activity {
                 i.setType("*/*");
                 startActivityForResult(i, PICK_STL);
             });
+        }
+
+        @JavascriptInterface
+        public void resetSlicer() {
+            ui.post(MainActivity.this::rebuildSlicer);
         }
     }
 
@@ -384,6 +422,7 @@ public class MainActivity extends Activity {
                 while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
                 in.close();
                 out.close();
+                stlName = name;
                 log("Loaded STL: " + name + " (" + stlFile.length() + " bytes)");
                 if (webView != null) {
                     webView.evaluateJavascript("window.onStlReady(" + JSONObject.quote(name) + ")", null);
