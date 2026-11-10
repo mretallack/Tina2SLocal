@@ -228,6 +228,13 @@ $('slice').onclick = async () => {
     setStatus("Generating G-code…");
     gcode = await eng.export();
 
+    // Cura's G-code files end with a terminator. The Tina2S firmware only
+    // runs the end-of-file block when the file ends with a newline and this
+    // marker; without it the printer stops mid-job and never executes the
+    // park block. Confirmed on the printer: same file + this trailer parks.
+    if (!gcode.endsWith("\n")) gcode += "\n";
+    gcode += "M82 ;absolute extrusion mode\n;End of Gcode\n";
+
     const lines = gcode.split("\n").length;
     let meta = "";
     for (const l of gcode.split("\n")) {
