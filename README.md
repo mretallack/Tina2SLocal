@@ -11,11 +11,10 @@ can slice and print entirely from your phone.
 > Android app (`com.weedo3d.pplocal`) — no proxy, no live capture. See
 > [`docs/LAN-PROTOCOL.md`](docs/LAN-PROTOCOL.md).
 
-## Features
+The app has three tabs — **Print**, **Slice** and **Status**.
 
 **Print tab**
 - Set / auto-discover the printer IP (scans the local `/24`).
-- Show status: device, firmware, state, temperatures, current job.
 - Upload a sliced `.gcode` file and optionally start printing.
 - Job control: **Start**, **Pause**, **Cancel**.
 
@@ -24,6 +23,12 @@ can slice and print entirely from your phone.
 - Slice with the embedded [Kiri:Moto](#the-slicer) engine, fully **offline**.
 - Adjust layer height, infill, wall shells, nozzle and bed temperature.
 - Send the resulting G-code straight to the printer.
+
+**Status tab** — live printer readout
+- Polls `/api/version`, `/api/printer` and `/api/job` every 2 s while visible.
+- Shows device/firmware, printer state, nozzle and bed temperature, the current
+  file, and job progress / elapsed / time left.
+- Polling stops automatically when the tab is not on screen.
 
 ## The slicer
 
@@ -42,6 +47,26 @@ efficiently.
 The slicer is configured with a **Tina2S** device profile (100 × 100 × 100 mm bed,
 0.4 mm nozzle, 1.75 mm filament) and a PLA process. Kiri:Moto also ships a built-in
 `Tina2.Basic.json` device profile, which this profile is based on.
+
+### Print start and end G-code
+
+The device profile carries the start (`gcodePre`) and end (`gcodePost`) blocks, so
+the printer behaves the same as with Cura's Tina2 start/end scripts:
+
+- **Start** — preheat the bed and raise the nozzle to **150 °C** (not full print
+  temperature) before homing, so the nozzle doesn't ooze over the bed; home Z and XY,
+  move to the centre and **auto-level (`G29`) on a hot bed** (wait for `M190` first);
+  then wait for the nozzle to reach print temperature (`M109`), heat-soak for **10 s**,
+  and lay a prime line. Keeping the nozzle at 150 °C until after levelling matches
+  Cura's proven sequence on this printer.
+- **End** — the verbatim Cura / upstream-Kiri:Moto Tina2 park: raise the Z feedrate cap
+  (`M203 Z15`), turn the heaters and fan off, home Z and XY, then run the bed forward
+  (`G1 Y90`) so the finished part presents at the front. Motors are left energised so
+  the park position is held.
+
+Appended to every export is the end-of-file terminator (`M82` + `;End of Gcode`). The
+Tina2S firmware only executes the trailing end block when the file ends with a newline
+and that marker, so without it the head does not park.
 
 ### Building the slicer from source
 
@@ -111,13 +136,14 @@ The firmware needs a moment to flush the upload to the SD card, so the app retri
 AndroidManifest.xml            app manifest (package com.retallack.tina2print)
 build.sh                       Gradle-free build script
 src/com/retallack/tina2print/
-    MainActivity.java          UI: Print + Slice tabs, upload, job control
+    MainActivity.java          UI: Print + Slice + Status tabs, upload, job control
     LocalServer.java           loopback HTTP server hosting the slicer page
 assets/
-    slice.html                 slicer UI (Kiri:Moto engine glue)
+    slice.html                 slicer UI + Tina2S device/process profile
     sample-cube.stl            test model
     lib/kiri/run/              Kiri:Moto engine.js, worker.js, manifold.wasm  [generated]
-    wasm/                      Kiri:Moto kiri-geo.wasm, kiri-sla.wasm          [generated]
+    lib/kiri/wasm/             manifold.wasm (engine copy)                    [generated]
+    wasm/                      kiri-geo.wasm, kiri-sla.wasm, manifold.wasm    [generated]
 tools/build-slicer.sh          rebuilds the slicer assets from vendored source
 thirdparty/grid-apps/          Kiri:Moto source (git submodule, pinned commit)
 docs/LAN-PROTOCOL.md           recovered Tina2S local Wi-Fi protocol
