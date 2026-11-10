@@ -135,7 +135,7 @@ function tina2Device(temp, bedTemp) {
                "G28 Z", "G28 X Y", "G1 X50 Y50 F1000", "G29",
                "M107", "G90", "M82",
                "M109 S{temp}",                           // wait for nozzle
-               "G4 S30",                                 // heat-soak the melt zone
+               "G4 S10",                                 // heat-soak the melt zone
                "G92 E0",
                "G1 X90 Y6 Z0.27 F2000", "G1 X20 Y6 Z0.27 E15 F1000", "G92 E0"],
     // End-of-print park: verbatim the Cura/upstream-Kiri:Moto end block for the
