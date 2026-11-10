@@ -10,6 +10,11 @@ MIN_SDK=21
 TARGET_SDK=34
 OUT="build"
 
+# Optional: stamp versionCode/versionName (e.g. from a CI tag).
+declare -a VERARGS=()
+[ -n "${VERSION_CODE:-}" ] && VERARGS+=(--version-code "$VERSION_CODE")
+[ -n "${VERSION_NAME:-}" ] && VERARGS+=(--version-name "$VERSION_NAME")
+
 rm -rf "$OUT"
 mkdir -p "$OUT/gen" "$OUT/obj" "$OUT/dex"
 
@@ -19,6 +24,7 @@ echo "== aapt2 link =="
     --manifest AndroidManifest.xml \
     --min-sdk-version "$MIN_SDK" \
     --target-sdk-version "$TARGET_SDK" \
+    "${VERARGS[@]}" \
     -A assets \
     --java "$OUT/gen"
 
@@ -45,14 +51,21 @@ echo "== zipalign =="
 "$BT/zipalign" -f 4 "$OUT/app.apk" "$OUT/app-aligned.apk"
 
 echo "== sign =="
-KS="$HOME/.android/debug.keystore"
+# Use a release keystore when provided (KEYSTORE_PATH + passwords), else the
+# debug keystore (generated on demand).
+KS="${KEYSTORE_PATH:-$HOME/.android/debug.keystore}"
+KS_ALIAS="${KEY_ALIAS:-androiddebugkey}"
+KS_PASS="${KEYSTORE_PASSWORD:-android}"
+KEY_PASS="${KEY_PASSWORD:-android}"
 if [ ! -f "$KS" ]; then
     mkdir -p "$(dirname "$KS")"
-    keytool -genkeypair -keystore "$KS" -alias androiddebugkey \
-        -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US" \
+    keytool -genkeypair -keystore "$KS" -alias "$KS_ALIAS" \
+        -storepass "$KS_PASS" -keypass "$KEY_PASS" \
+        -dname "CN=Android Debug,O=Android,C=US" \
         -keyalg RSA -keysize 2048 -validity 10000
 fi
-"$BT/apksigner" sign --ks "$KS" --ks-pass pass:android --key-pass pass:android \
+"$BT/apksigner" sign --ks "$KS" --ks-key-alias "$KS_ALIAS" \
+    --ks-pass "pass:$KS_PASS" --key-pass "pass:$KEY_PASS" \
     --out Tina2Print.apk "$OUT/app-aligned.apk"
 
 echo "== done =="
