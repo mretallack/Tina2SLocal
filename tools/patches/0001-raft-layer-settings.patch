@@ -1,0 +1,49 @@
+diff --git a/src/kiri/mode/fdm/work/prepare.js b/src/kiri/mode/fdm/work/prepare.js
+index 08c439d8..75c6e37b 100644
+--- a/src/kiri/mode/fdm/work/prepare.js
++++ b/src/kiri/mode/fdm/work/prepare.js
+@@ -147,14 +147,40 @@ export async function fdm_prepare(widgets, settings, update) {
+                 zneg = height / 2;
+             };
+ 
++            // Raft layer tuning.  Heights and line spacings are expressed as
++            // multiples of the nozzle diameter, speeds in mm/s, flow as a
++            // multiplier on the extrusion rate.  Every fallback below is the
++            // value Kiri:Moto shipped hardcoded, so leaving the settings unset
++            // (or at their defaults) produces an identical raft.
++            const raftSet = (key, def) => {
++                let val = parseFloat(process[key]);
++                return isFinite(val) && val > 0 ? val : def;
++            };
++
+             // cause first point of raft to be used
+             printPoint = null;
+ 
+             // emit raft layers
+-            raft(nozzle * 1.5, angle +  0, nozzle * 6.00, rate1, 2.50, true);
+-            raft(nozzle * 0.5, angle + 90, nozzle * 2.00, rate2, 1.50, true);
+-            raft(nozzle * 0.5, angle +  0, nozzle * 1.00, rate2, 1.00);
+-            raft(nozzle * 0.5, angle + 90, nozzle * 0.75, rate2, 0.75);
++            raft(nozzle * raftSet('outputRaftBaseHeight',    1.50),
++                 angle +  0,
++                 nozzle * raftSet('outputRaftBaseSpacing',   6.00),
++                 raftSet('outputRaftBaseSpeed',    rate1),
++                 raftSet('outputRaftBaseFlow',    2.50), true);
++            raft(nozzle * raftSet('outputRaftMidHeight',     0.50),
++                 angle + 90,
++                 nozzle * raftSet('outputRaftMidSpacing',    2.00),
++                 raftSet('outputRaftMidSpeed',     rate2),
++                 raftSet('outputRaftMidFlow',     1.50), true);
++            raft(nozzle * raftSet('outputRaftTop1Height',    0.50),
++                 angle +  0,
++                 nozzle * raftSet('outputRaftTop1Spacing',   1.00),
++                 raftSet('outputRaftTop1Speed',    rate2),
++                 raftSet('outputRaftTop1Flow',    1.00));
++            raft(nozzle * raftSet('outputRaftTop2Height',    0.50),
++                 angle + 90,
++                 nozzle * raftSet('outputRaftTop2Spacing',   0.75),
++                 raftSet('outputRaftTop2Speed',    rate2),
++                 raftSet('outputRaftTop2Flow',    0.75));
+ 
+             // raise first layer off raft slightly to lessen adhesion
+             firstLayerHeight += process.outputRaftSpacing || 0;

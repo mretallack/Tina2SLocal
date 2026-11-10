@@ -9,6 +9,7 @@
 #
 #   assets/lib/kiri/run/engine.js     <- src/pack/kiri-eng.js   (esbuild)
 #   assets/lib/kiri/run/worker.js     <- src/pack/kiri-work.js  (esbuild)
+#   assets/lib/kiri/run/minion.js     <- src/pack/kiri-pool.js  (esbuild)
 #   assets/lib/kiri/run/manifold.wasm <- node_modules/manifold-3d
 #   assets/lib/kiri/wasm/manifold.wasm
 #   assets/wasm/manifold.wasm
@@ -31,6 +32,22 @@ done
   echo "error: submodule missing — run: git submodule update --init --recursive" >&2; exit 1; }
 
 mkdir -p "$KIRI" "$OUT/lib/kiri/wasm" "$OUT/wasm"
+
+# Apply the local patch series (see tools/patches/).  Upstream is an unmodified
+# submodule, so our few changes live here as patches rather than as edits that
+# would be lost on `git submodule update`.  Each patch is applied only once.
+for patch in "$HERE"/tools/patches/*.patch; do
+  [ -e "$patch" ] || continue
+  name="$(basename "$patch")"
+  if git -C "$SRC" apply --check "$patch" 2>/dev/null; then
+    git -C "$SRC" apply "$patch"
+    echo "==> applied $name"
+  elif git -C "$SRC" apply --reverse --check "$patch" 2>/dev/null; then
+    echo "==> $name already applied"
+  else
+    echo "error: $name does not apply to the vendored slicer" >&2; exit 1
+  fi
+done
 
 echo "==> 1/4  Installing Kiri:Moto dependencies (npm)"
 ( cd "$SRC" && npm install --ignore-scripts )
@@ -55,6 +72,7 @@ echo "==> 4/4  Compiling WASM geometry modules (emscripten)"
 echo "==> Copying assets into $OUT"
 cp "$SRC/src/pack/kiri-eng.js"    "$KIRI/engine.js"
 cp "$SRC/src/pack/kiri-work.js"   "$KIRI/worker.js"
+cp "$SRC/src/pack/kiri-pool.js"   "$KIRI/minion.js"
 cp "$SRC/node_modules/manifold-3d/manifold.wasm" "$KIRI/manifold.wasm"
 cp "$SRC/node_modules/manifold-3d/manifold.wasm" "$OUT/lib/kiri/wasm/manifold.wasm"
 cp "$SRC/node_modules/manifold-3d/manifold.wasm" "$OUT/wasm/manifold.wasm"

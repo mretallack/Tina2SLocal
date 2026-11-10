@@ -1,0 +1,17 @@
+diff --git a/src/kiri/run/worker.js b/src/kiri/run/worker.js
+index 50570278..42aed0c9 100644
+--- a/src/kiri/run/worker.js
++++ b/src/kiri/run/worker.js
+@@ -116,7 +116,11 @@ const minwork = {
+         if (minions.length || !concurrent) {
+             return;
+         }
+-        for (let i=0; i < concurrent; i++) {
++        // Cap the pool: this app runs on phones where the default
++        // hardwareConcurrency-based sizing (4-8 workers) each carry their own
++        // multi-MB heap. Support generation is the only consumer, and two
++        // minions slice real-world models comfortably.
++        for (let i=0; i < Math.min(concurrent, 2); i++) {
+             let minion = new Worker(poolpath || POOLPATH, { type: 'module' });
+             minion.onerror = (error) => {
+                 debug({ MINION_ERROR: error });
