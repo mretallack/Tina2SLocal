@@ -3,6 +3,10 @@ build/
 *.apk
 *.apk.idsig
 
+# Reverse-engineering material for the Tina2S (vendor APK, firmware dumps,
+# decompiled app, packet captures). Local reference only - not part of the app.
+research/
+
 # OS / editor
 .DS_Store
 *.swp
