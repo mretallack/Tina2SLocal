@@ -165,17 +165,29 @@ Built without Gradle, using the Android SDK command-line tools directly
 
 ```bash
 export ANDROID_SDK_ROOT=/path/to/android-sdk
-./build.sh          # -> Tina2Print.apk (signed with the debug keystore)
+./build.sh          # -> Tina2Print.apk (debug-signed)
 ```
 
 `build.sh` expects `build-tools/35.0.0` and `platforms/android-34`. The debug keystore
 is created automatically at `~/.android/debug.keystore` if missing.
+
+Environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `ANDROID_SDK_ROOT` | SDK location (defaults to `~/android-sdk`). |
+| `VERSION_CODE`, `VERSION_NAME` | Stamp the APK version (defaults `1` and `0.0.0`). CI sets these from the tag. |
+| `KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` | Sign with a release keystore instead of the debug one. |
 
 Install:
 
 ```bash
 adb install -r Tina2Print.apk
 ```
+
+> **Signing is permanent.** Android only accepts an update signed with the *same* key
+> as the installed build, so the release keystore must never change — see
+> [Releases & versioning](#releases--versioning).
 
 ## Updates
 
@@ -195,7 +207,51 @@ root, given two things:
 
 So self-update only works for **release-signed** builds. The default `./build.sh`
 output is debug-signed; to get updates, build and publish releases with a real
-keystore (see the CI secrets below) and keep using that same key forever.
+keystore (see [Releases & versioning](#releases--versioning)) and keep using that same
+key forever.
+
+The check runs once per launch, in the background, and fails silently (offline, rate
+limited, no release yet) — it never blocks the app. The update flow is logged under
+the `Tina2Updater` tag (`adb logcat -s Tina2Updater`).
+
+## Releases & versioning
+
+Releases are **tag-driven**. CI (`.github/workflows/android-ci.yml`) builds on every
+push to `main` and, for a pushed `v*` tag, publishes a **GitHub Release** with the
+APK attached. Version numbers come from `build.sh`:
+
+- `VERSION_NAME` — the tag, e.g. `v0.0.4`.
+- `VERSION_CODE` — the workflow run number (monotonically increasing, so a new build
+  always sorts above older ones).
+
+**To cut a release:**
+
+1. Commit and push your changes to `main`.
+2. Tag and push the tag — this is the whole release step:
+   ```bash
+   git tag -a v0.0.4 -m "v0.0.4"
+   git push origin v0.0.4
+   ```
+3. CI builds the APK and attaches it to a GitHub Release for the tag (creating the
+   release if it doesn't exist). No local build or upload is needed.
+
+Rules that keep self-update working:
+
+- **Never change the signing key** — releases must always be signed with the same
+  keystore, or Android rejects the update (and older installs can't be updated).
+- **Don't publish drafts/pre-releases** — the updater reads GitHub's
+  `releases/latest`, which skips them.
+- **The release must carry the `Tina2Print.apk` asset** — that is what gets downloaded.
+
+CI needs these repo secrets (**Settings → Secrets and variables → Actions**); without
+them the build falls back to the debug keystore and updates will not install:
+
+| Secret | Value |
+|---|---|
+| `KEYSTORE_BASE64` | `base64 -w0 release.keystore` |
+| `KEYSTORE_PASSWORD` | keystore password |
+| `KEY_ALIAS` | key alias |
+| `KEY_PASSWORD` | key password |
 
 ## How printing works on this printer
 
@@ -218,6 +274,8 @@ build.sh                       Gradle-free build script
 src/com/retallack/tina2print/
     MainActivity.java          UI: Print + Slice + Status tabs, upload, job control
     LocalServer.java           loopback HTTP server hosting the slicer page
+    Updater.java               self-update from GitHub Releases (no Play/F-Droid)
+    UpdateResultReceiver.java  PackageInstaller session result handler
 assets/
     slice.html                 slicer UI + Tina2S device/process profile
     sample-cube.stl            test model
@@ -228,6 +286,8 @@ tools/build-slicer.sh          rebuilds the slicer assets from vendored source
 tools/patches/                 local patches applied to the vendored slicer
 thirdparty/grid-apps/          Kiri:Moto source (git submodule, pinned commit)
 docs/LAN-PROTOCOL.md           recovered Tina2S local Wi-Fi protocol
+.github/workflows/android-ci.yml   CI: build APK + publish releases
+AGENT.md                       notes for contributors/agents (architecture, CI, gotchas)
 ```
 
 Files marked `[generated]` are produced by `tools/build-slicer.sh`; they are
