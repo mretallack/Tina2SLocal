@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.retallack.tina2print">
+    package="com.retallack.tina2print"
+    android:versionCode="1"
+    android:versionName="0.0.0">
 
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+    <!-- Self-update: lets the app hand a downloaded APK to PackageInstaller. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
     <application
         android:label="Tina2 Print"
@@ -21,5 +25,14 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+
+        <!-- Result of a self-update PackageInstaller session (see Updater.java). -->
+        <receiver
+            android:name=".UpdateResultReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.retallack.tina2print.INSTALL_RESULT"/>
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

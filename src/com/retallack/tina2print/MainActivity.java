@@ -142,6 +142,9 @@ public class MainActivity extends Activity {
         ipField.setText(prefs.getString("ip", "10.0.0.96"));
 
         log("Tina2 Print ready. Set the printer IP and upload a sliced .gcode.");
+
+        // Check GitHub Releases for a newer build (no Play Store / F-Droid). Non-blocking.
+        Updater.checkOnStartup(this);
     }
 
     // ---------- Print tab ----------

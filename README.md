@@ -177,6 +177,26 @@ Install:
 adb install -r Tina2Print.apk
 ```
 
+## Updates
+
+The app updates itself — no Play Store or F-Droid. On startup it queries the
+**GitHub Releases** API for `mretallack/Tina2SLocal`, and if the latest release tag is
+newer than the installed build it offers to download the release's `.apk` and hand it
+to Android's `PackageInstaller` (you can defer with **Later** or silence a version with
+**Skip this version**).
+
+It works because the app is updating *its own* package, which Android permits without
+root, given two things:
+
+- the user grants **"install unknown apps"** for Tina2 Print once (the app opens that
+  Settings page for you when needed); and
+- **every build is signed with the same release keystore** — an update signed with a
+  different key is rejected by Android.
+
+So self-update only works for **release-signed** builds. The default `./build.sh`
+output is debug-signed; to get updates, build and publish releases with a real
+keystore (see the CI secrets below) and keep using that same key forever.
+
 ## How printing works on this printer
 
 There is **no "play" button** — uploading a file does not start it. The flow is:
