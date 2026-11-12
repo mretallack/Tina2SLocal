@@ -13,6 +13,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.util.Log;
 import android.widget.Toast;
 
 import org.json.JSONArray;
@@ -45,6 +46,8 @@ public final class Updater {
 
     /** Broadcast action the PackageInstaller session reports back on. */
     static final String INSTALL_ACTION = "com.retallack.tina2print.INSTALL_RESULT";
+
+    static final String TAG = "Tina2Updater";
 
     private static final String OWNER = "mretallack";
     private static final String REPO = "Tina2SLocal";
@@ -184,8 +187,10 @@ public final class Updater {
             try {
                 File apk = new File(activity.getCacheDir(), "update-" + r.version + ".apk");
                 download(r.apkUrl, apk);
+                Log.i(TAG, "downloaded " + apk + " (" + apk.length() + " bytes)");
                 ui.post(() -> install(apk));
             } catch (Exception e) {
+                Log.e(TAG, "download failed", e);
                 String msg = e.getMessage() == null ? e.toString() : e.getMessage();
                 ui.post(() -> toast("Update download failed: " + msg));
             }
@@ -230,6 +235,7 @@ public final class Updater {
                     new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
             params.setAppPackageName(activity.getPackageName());
             int sessionId = installer.createSession(params);
+            Log.i(TAG, "created session " + sessionId + " for " + apk.length() + " bytes");
 
             PackageInstaller.Session session = installer.openSession(sessionId);
             try (OutputStream os = session.openWrite("tina2print", 0, apk.length());
@@ -242,13 +248,17 @@ public final class Updater {
 
             Intent result = new Intent(activity, UpdateResultReceiver.class);
             result.setAction(INSTALL_ACTION);
+            // The system fills EXTRA_STATUS / EXTRA_STATUS_MESSAGE (and EXTRA_INTENT for
+            // STATUS_PENDING_USER_ACTION) into this broadcast, so it must be mutable.
             int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                flags |= PendingIntent.FLAG_IMMUTABLE;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                flags |= PendingIntent.FLAG_MUTABLE;
             }
             PendingIntent pending = PendingIntent.getBroadcast(activity, sessionId, result, flags);
             session.commit(pending.getIntentSender());
+            Log.i(TAG, "committed session " + sessionId);
         } catch (Exception e) {
+            Log.e(TAG, "install failed", e);
             String msg = e.getMessage() == null ? e.toString() : e.getMessage();
             toast("Install failed: " + msg);
         }

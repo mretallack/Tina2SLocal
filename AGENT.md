@@ -154,6 +154,17 @@ The app updates itself with no Play Store / F-Droid. On `onCreate` it calls
   the session's status: `STATUS_PENDING_USER_ACTION` (launches the confirm intent the
   system hands back), `STATUS_SUCCESS`, or failure (toasts the status message).
 
+**Gotcha — the result PendingIntent must be MUTABLE.** The system fills
+`EXTRA_STATUS` / `EXTRA_STATUS_MESSAGE` and (for `STATUS_PENDING_USER_ACTION`, which
+is `-1`) `EXTRA_INTENT` into the committed broadcast. If it's created
+`FLAG_IMMUTABLE`, those extras are dropped: `getIntExtra` then falls back to
+`STATUS_FAILURE` (`1`) and the confirm intent is null, so nothing installs and the
+app wrongly reports "Update failed: status 1". Use
+`FLAG_UPDATE_CURRENT | FLAG_MUTABLE` on API 31+ (below 31 no mutability flag is
+needed); no installer/`PackageInstaller` errors are logged in the failure case, which
+is what makes this one easy to miss. `UpdateResultReceiver` and `Updater` log to the
+`Tina2Updater` tag — filter `adb logcat -s Tina2Updater` to debug the flow.
+
 Manifest additions: `REQUEST_INSTALL_PACKAGES` and the `.UpdateResultReceiver`
 receiver. Versioning is done **only** by `build.sh` (`VERSION_CODE`/`VERSION_NAME`
 env, defaulting to `1` / `0.0.0` so an unstamped build sorts below every release) —
