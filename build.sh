@@ -10,10 +10,10 @@ MIN_SDK=21
 TARGET_SDK=34
 OUT="build"
 
-# Optional: stamp versionCode/versionName (e.g. from a CI tag).
-declare -a VERARGS=()
-[ -n "${VERSION_CODE:-}" ] && VERARGS+=(--version-code "$VERSION_CODE")
-[ -n "${VERSION_NAME:-}" ] && VERARGS+=(--version-name "$VERSION_NAME")
+# Version stamping (e.g. from a CI tag). Defaults keep an unstamped build below
+# every release, so the in-app self-updater still offers the latest one.
+VERSION_CODE="${VERSION_CODE:-1}"
+VERSION_NAME="${VERSION_NAME:-0.0.0}"
 
 rm -rf "$OUT"
 mkdir -p "$OUT/gen" "$OUT/obj" "$OUT/dex"
@@ -24,7 +24,8 @@ echo "== aapt2 link =="
     --manifest AndroidManifest.xml \
     --min-sdk-version "$MIN_SDK" \
     --target-sdk-version "$TARGET_SDK" \
-    "${VERARGS[@]}" \
+    --version-code "$VERSION_CODE" \
+    --version-name "$VERSION_NAME" \
     -A assets \
     --java "$OUT/gen"
 

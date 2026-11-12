@@ -154,10 +154,12 @@ The app updates itself with no Play Store / F-Droid. On `onCreate` it calls
   the session's status: `STATUS_PENDING_USER_ACTION` (launches the confirm intent the
   system hands back), `STATUS_SUCCESS`, or failure (toasts the status message).
 
-Manifest additions: `REQUEST_INSTALL_PACKAGES`, the `.UpdateResultReceiver` receiver,
-and `versionCode`/`versionName` defaults (`1` / `0.0.0`) so unstamped local builds
-sort below any release and would offer the latest — CI overrides them via `build.sh`
-env (`VERSION_CODE`/`VERSION_NAME`, where `VERSION_NAME` is the tag).
+Manifest additions: `REQUEST_INSTALL_PACKAGES` and the `.UpdateResultReceiver`
+receiver. Versioning is done **only** by `build.sh` (`VERSION_CODE`/`VERSION_NAME`
+env, defaulting to `1` / `0.0.0` so an unstamped build sorts below every release) —
+the manifest deliberately carries **no** `versionCode`/`versionName`, since aapt2
+prefers a manifest attribute over the `--version-name` flag. CI passes the tag as
+`VERSION_NAME`.
 
 Constraints to keep in mind:
 
